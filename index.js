@@ -28,13 +28,27 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// Ensure static directories exist
+function ensureDirectories() {
+    const uploadDir = path.join(__dirname, 'static', 'uploads');
+    if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+        console.log(`Created upload directory: ${uploadDir}`);
+    }
+    
+    const staticDir = path.join(__dirname, 'static');
+    if (!fs.existsSync(staticDir)) {
+        fs.mkdirSync(staticDir, { recursive: true });
+        console.log(`Created static directory: ${staticDir}`);
+    }
+}
+
+ensureDirectories();
+
 // File upload setup
 const storage = multer.diskStorage({
     destination: (req, res, cb) => {
         const uploadDir = path.join(__dirname, 'static', 'uploads');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
@@ -178,11 +192,31 @@ function requireAdmin() {
 
 // Routes
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'index.html'));
+    res.json({
+        message: 'Telegram Wheel Bot Backend API',
+        version: '1.0.0',
+        endpoints: {
+            api: '/api/*',
+            admin: '/admin',
+            health: '/health',
+            docs: 'https://github.com/your-repo/docs'
+        },
+        status: 'operational'
+    });
 });
 
 app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'admin.html'));
+    res.json({
+        message: 'Admin API endpoints are available',
+        endpoints: {
+            wheel_config: 'GET /api/wheel-config',
+            save_wheel_config: 'POST /api/admin/wheel-config',
+            upload: 'POST /api/admin/upload',
+            recipients: 'POST /api/admin/recipients',
+            broadcast: 'POST /api/admin/broadcast-create'
+        },
+        note: 'Use admin_id parameter for authentication'
+    });
 });
 
 // API Routes with client middleware
@@ -411,7 +445,7 @@ app.post('/api/admin/upload', getClientMiddleware(), requireAdmin(), upload.sing
     }
 });
 
-// Serve static files
+// Serve static files if they exist
 app.use('/static', express.static(path.join(__dirname, 'static')));
 app.use('/uploads', express.static(path.join(__dirname, 'static', 'uploads')));
 
@@ -420,7 +454,8 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'ok', 
         timestamp: new Date().toISOString(),
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        memory: process.memoryUsage()
     });
 });
 
@@ -429,18 +464,34 @@ async function processBackgroundTasks() {
     console.log('Starting background task processor...');
     
     setInterval(async () => {
-        // Process pending fallbacks for all clients
-        // This would require iterating through all configured clients
-        // For simplicity, we're processing only active clients
         console.log('Processing background tasks...');
+        // Implement background task processing here
     }, 60000); // Every minute
 }
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        error: 'Endpoint not found',
+        path: req.path
+    });
+});
 
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📱 Multi-client Telegram Wheel Bot Backend`);
-    console.log(`🔧 Default client ID: ${process.env.DEFAULT_CLIENT_ID}`);
+    console.log(`🔧 Default client ID: ${process.env.DEFAULT_CLIENT_ID || 'default'}`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
     
     // Start background tasks
     processBackgroundTasks();
